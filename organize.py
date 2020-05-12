@@ -1,19 +1,18 @@
-"""
-Titel: Voorbeeld scriptopbouw
-Author: Jan B.
-Date: april 2020
-Version: 1.0
-Python-version: 3.7
+""" Title: Downloads Organizer
+Original Author: Jan B.
+Second Author: Karan Dodia
+Date: May 2020
+Version: 1.1
+Python-version: 3.8
 
 This program is designed to organize the contents of a folder by assigning
 files with specific extensions to specific folders.
-This program is made with the purpose of organzing the windows download-folder,
-but by changing the directory_path-variable in the main it can tho(probably) be
-used for any folder.
-The directories-dictionary in the main specifies the names of the folders as
-well as the file extensions that should be assigned to those folders.
-You can change this dictionary to suit your needs.
+This program is made with the purpose of organizing the user download folder
+(i.e. `~/Downloads`), but can be easily be extended to similar use cases. The
+only 3rd-party dependency is the `toolz` package—if you're not already using
+it, now you have an excuse to install it and look around. =]
 
+Modified by Karan D. for cross-platform compatability, Python 3.8, pathlib.
 
 MIT License
 
@@ -38,112 +37,116 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-# imports:
-import os
-import shutil
+#                                <   Imports   >
+from pathlib import Path
+from typing import Dict, Sequence, Union
+
+from operator import methodcaller
+from toolz.dicttoolz import valmap
+
+#                           <   Utility Functions   >
+space_splitter = methodcaller('split', ' ')
 
 
-def create_folders(directories, directory_path):
+#===========================^                       ^============================
+#==========================<   Directory Organizer   >===========================
+#===========================v                       v============================
+class DirectoryOrganizer(object):
+  """Thin class wrapper to create and organize configured directories.
+
+  Initialize an instance with the target directory and organization
+  directories and extensions, then call `organize()` to execute
+  the common organization steps.
+  """
+
+  #-----------------------------<   Defaults   >---------------------------------
+  TARGET_DIR = '~/Downloads'
+
+  _ORG_DIRECTORIES = dict(
+      Documents=(".oxps .epub .pages .docx .doc .fdf .ods .odt "
+                 ".pwi .xsn .xps .dotx .docm .dox .rvg .rtf "
+                 ".rtfd .wpd .csv .xls .xlsx .ppt pptx"),
+      Plaintext=".txt .in .out",
+      PDFs=".pdf",
+      Images=(".jpeg .jpg .tif .tiff .gif .bmp "
+              ".png .bpg svg .heif .psd"),
+      Audio=(".aac .aa .aac .dvf .m4a .m4b .m4p "
+             ".mp3 .msv .ogg .oga .raw .vox .wav .wma"),
+      Videos=(".avi .flv .wmv .mov .mp4 .webm .vob "
+              ".mng .qt .mpg .mpeg .3gp .mkv"),
+      Archives=(".a .ar .cpio .iso .tar .gz "
+                ".rz .7z .dmg .rar .xar .zip"),
+      Scripts=".sh .zsh .py")
+  ORG_DIRECTORIES = valmap(space_splitter, _ORG_DIRECTORIES)
+
+  #------------------------------<   __init__   >--------------------------------
+  def __init__(self,
+               target_dir: Union[Path, str] = None,
+               org_directories: Dict[str, Sequence[str]] = None):
+    """Initialize with the target directory and organization directories.
+
+    Attributes:
+      target_dir: a str or Path to the directory that is to be sorted.
+      org_directories: a dictionary containing the names of the sorted
+      folders mapped to a list of extensions that corresponds to those folders.
     """
-    This function creates the folders in <directory_path> where the files
-    will be moved to.
-    :param directories: dictionary, this is a dictionary containing the
-    names of the sorted folders and the extensions that correspond to those
-    folders.
-    :param directory_path: string, this is a string of the path to the
-    directory that is to be sorted.
+
+    if target_dir is None:
+      target_dir = self.TARGET_DIR
+    self.target_dir = Path(target_dir).expanduser()
+
+    if org_directories is None:
+      org_directories = self.ORG_DIRECTORIES
+    self.org_directories = org_directories
+
+  #--------------------------<   Instance Methods   >----------------------------
+  def create_folders(self) -> None:
+    """Creates directories for organization in the target folder."""
+
+    for x in self.org_directories:
+      Path(self.target_dir, x).mkdir(exist_ok=True)
+
+  def organize_files(self) -> None:
+    """Organizes the files into the specified directories."""
+
+    for path in self.target_dir.iterdir():
+      if path.is_file() and path.suffix:
+        for org_dir in self.org_directories:
+          if path.suffix.lower() in self.org_directories[org_dir]:
+            path.rename(self.target_dir / org_dir / path.name)
+
+  def organize_remaining_files(self) -> None:
+    """Assigns remaining files to the the `target_dir/Other` directory."""
+    for path in self.target_dir.iterdir():
+      if path.is_file() and path.suffix:
+        path.rename(self.target_dir / 'Other' / path.name)
+
+  def organize_remaining_folders(self) -> None:
+    """Assigns remaining folders to the the `target_dir/FOLDERS` directory."""
+
+    for path in self.target_dir.iterdir():
+      if all((path.is_dir(), path.name not in self.org_directories,
+              path.name != 'FOLDERS')):
+        path.rename(self.target_dir / 'FOLDERS' / path.name)
+
+  def organize(self) -> None:
+    """Performs the common organization routine.
+
+    Steps:
+      1. Creates the folders for organization in the target_dir
+      2. Organizes files with recognized extensions
+      3. Organizes remaining files into the "Other" directory
+      4. Organizes remaining folders into the "Folders" directory
     """
-    for key in directories:
-        if key not in os.listdir(directory_path):
-            os.mkdir(directory_path + '/' + key)
-    if "OTHER" not in os.listdir(directory_path):
-        os.mkdir(directory_path + '/' + "OTHER")
+
+    self.create_folders()
+    self.organize_files()
+    self.organize_remaining_files()
+    self.organize_remaining_folders()
 
 
-def organize_folders(directories, directory_path):
-    """
-    This function organizes the files in the specified folder into folders.
-    :param directories: directories: dictionary, this is a dictionary
-    containing the names of the sorted folders and the extensions that
-    correspond to those folders.
-    :param directory_path: string, this is a string of the path to the
-    directory that is to be sorted.
-    """
-    for file in os.listdir(directory_path):
-        if os.path.isfile(directory_path + '/' + file):
-            src_path = directory_path + '/' + file
-            for key in directories:
-                extension = directories[key]
-                if file.endswith(extension):
-                    dest_path = os.path.join(directory_path, key, file)
-                    shutil.move(src_path, dest_path)
-                    break
-
-
-def organize_remaining_files(directory_path):
-    """
-    This function assigns the file that don't have a corresponding folder to
-    the <OTHER> directory.
-    :param directory_path: string, this is a string of the path to the
-    directory that is to be sorted.
-    """
-    for file in os.listdir(directory_path):
-        if os.path.isfile(directory_path + '/' + file):
-            src_path = directory_path + '/' + file
-            dest_path = os.path.join(directory_path, "OTHER", file)
-            shutil.move(src_path, dest_path)
-
-
-def organize_remaining_folders(directories, directory_path):
-    """
-    This function assings the folders within the specified directory to the
-    <FOLDER> directory.
-    :param directories: directories: dictionary, this is a dictionary
-    containing the names of the sorted folders and the extensions that
-    corresponds to those folders.
-    :param directory_path: string, this is a string of the path to the
-    directory that is to be sorted.
-    """
-    list_dir = os.listdir(directory_path)
-    organized_folders = []
-    for folder in directories:
-        organized_folders.append(folder)
-    organized_folders = tuple(organized_folders)
-    for folder in list_dir:
-        if folder not in organized_folders:
-            src_path = directory_path + '/' + folder
-            dest_path = os.path.join(directory_path, "FOLDERS", folder)
-            shutil.move(src_path, dest_path)
-
-
+#==========================<   __name__ == __main__   >==========================
 if __name__ == '__main__':
-    directory_path = "C:/Users/jan_b/Downloads"
-    directories = {
-        "HTML": (".html5", ".html", ".htm", ".xhtml"),
-        "IMAGES": (".jpeg", ".jpg", ".tiff", ".gif", ".bmp", ".png", ".bpg",
-                   "svg",
-                   ".heif", ".psd"),
-        "VIDEOS": (".avi", ".flv", ".wmv", ".mov", ".mp4", ".webm", ".vob",
-                   ".mng",
-                   ".qt", ".mpg", ".mpeg", ".3gp", ".mkv"),
-        "DOCUMENTS": (".oxps", ".epub", ".pages", ".docx", ".doc", ".fdf",
-                      ".ods",
-                      ".odt", ".pwi", ".xsn", ".xps", ".dotx", ".docm", ".dox",
-                      ".rvg", ".rtf", ".rtfd", ".wpd", ".xls", ".xlsx", ".ppt",
-                      "pptx"),
-        "ARCHIVES": (".a", ".ar", ".cpio", ".iso", ".tar", ".gz", ".rz", ".7z",
-                     ".dmg", ".rar", ".xar", ".zip"),
-        "AUDIO": (".aac", ".aa", ".aac", ".dvf", ".m4a", ".m4b", ".m4p",
-                  ".mp3",
-                  ".msv", "ogg", "oga", ".raw", ".vox", ".wav", ".wma"),
-        "PLAINTEXT": (".txt", ".in", ".out"),
-        "PDF": ".pdf",
-        "PYTHON": ".py",
-        "EXE": ".exe",
-        "OTHER": "",
-        "FOLDERS": ""
-    }
-    create_folders(directories, directory_path)
-    organize_folders(directories, directory_path)
-    organize_remaining_files(directory_path)
-    organize_remaining_folders(directories, directory_path)
+
+  organizer = DirectoryOrganizer()
+  organizer.organize()
